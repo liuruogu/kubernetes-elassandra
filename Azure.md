@@ -1,4 +1,4 @@
-# Elassandra deployment on Azure Kubernetes Service (AKS)
+# Azure Kubernetes Service (AKS)
 
 ## Azure requirements
 
