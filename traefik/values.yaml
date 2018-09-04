@@ -1,0 +1,7 @@
+dashboard:
+  enabled: true
+  domain: traefik-dashboard.aks1.azure.strapcloud.com
+kubernetes:
+  namespaces:
+    - default
+    - kube-system

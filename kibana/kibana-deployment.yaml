@@ -1,0 +1,38 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: default
+  labels:
+    component: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+     component: kibana
+  template:
+    metadata:
+      labels:
+        component: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana-oss:6.2.3
+        env:
+        - name: ELASTICSEARCH_URL
+          value: http://elassandra:9200
+
+        resources:
+          limits:
+            cpu: 1000m
+          requests:
+            cpu: 100m
+        ports:
+        - containerPort: 5601
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: http
+          initialDelaySeconds: 20
+          timeoutSeconds: 5

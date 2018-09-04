@@ -69,7 +69,7 @@ And to verify the state of the statefulset:
 See [updating-statefulsets](https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#updating-statefulsets)
 
 ```
-    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata.azurecr.io/strapdata/elassandra:6.2.3.5-rc1"}]'
+    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata/elassandra:6.2.3.5-rc2"}]'
 ```
 
 Check pods active image:
@@ -107,7 +107,7 @@ List pods env variables:
 * Rolling-upgrade to the new version
 
 ```
-    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata.azurecr.io/strapdata/elassandra:6.2.3.5-rc1"}]'
+    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata.azurecr.io/strapdata/elassandra:6.2.3.5-rc2"}]'
 ```
 
 * Recreate elasticsearch indices mapping (or insert data)
@@ -130,7 +130,7 @@ Elassandra Enterprise provides elasticsearch transport and client-to-node SSL en
 * Upgrade to elassandra-enterprise docker image with SSL and authentication enabled. 
 
 ```
-    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata.azurecr.io/strapdata/elassandra-enterprise:6.2.3.5-rc1"}]'
+    kubectl patch statefulset elassandra --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"strapdata.azurecr.io/strapdata/elassandra-enterprise:6.2.3.5-rc2"}]'
 ```
 
   The strapdata enterprise docker image includes a cacert.pem, a truststore and a keystore containing a Strapdata root CA and generic node certificate. This generic SSL certificate with **CN=elassandra-0.elassandra.default.svc.cluster.local** also matches **localhost**, **127.0.0.1** or any DNS names suffixed by **elassandra.default.svc.cluster.local**. To overwrite these settings, overwrite the strapdata docker image by COPYing yours in /opt/elassandra-<version>/conf/[cacert.pem, .truststore, .keystore].
@@ -180,8 +180,47 @@ To disable cassandra SSL encryption (but keeps the elasticsearch SSL encryption 
     kubectl set env statefulset -e CASSANDRA__client_encryption_options__enabled="false" -e CASSANDRA__server_encryption_options__internode_encryption="none" --all
 ```
 
-## Destroy your cluster
+## Deploy a secured kibana configuration
 
+Create a **kibana** cassandra role, the **_kibana** keyspace if not exists, and grant the following permissions. 
+
+```
+    kubectl exec -ti elassandra-0 -- cqlsh --ssl -u admin -p admin -e "\
+    CREATE ROLE IF NOT EXISTS kibana WITH PASSWORD = 'kibana' AND LOGIN = true AND SUPERUSER = false;\
+    CREATE KEYSPACE IF NOT EXISTS "_kibana" WITH replication = {'class': 'NetworkTopologyStrategy', 'DC1':'1'};\
+    GRANT CREATE ON KEYSPACE "_kibana" TO kibana;\
+    GRANT ALTER ON KEYSPACE "_kibana" TO kibana;\
+    GRANT SELECT ON KEYSPACE "_kibana" TO kibana;\
+    GRANT MODIFY ON KEYSPACE "_kibana" TO kibana;"
+```
+
+The kibana role also requires the following privilege to monitor the elasticsearch cluster, but this should be created by default.
+
+```
+    kubectl exec -ti elassandra-0 -- cqlsh --ssl -u admin -p admin -e "\
+    INSERT INTO elastic_admin.privileges (role,actions,indices) VALUES ('kibana','cluster:monitor/.*','.*');
+```
+
+Then deployed a secured kibana configuration with HTTPS enabled to elassandra 
+
+    kubectl apply -f kibana/kibana-service.yaml
+    kubectl apply -f kibana/kibana-deployment-secure.yaml
+
+If you run (traefik)[https://docs.traefik.io/user-guide/kubernetes/] as your ingress proxy, set your domain name in the kibana-ingress.yaml and deploy it:
+
+     kubectl apply -f kibana/kibana-ingress.yaml
+
+### Role-based access control
+
+In order to create an index pattern in kibana, the kibana role used in your kibana configuration (elasticsearch.username in the kibana configuration) requires the SELECT permission on the underlying keyspace.
+
+When using kibana, you can login with the kibana role (elasticsearch.username defined in the kibana configuration) or with another role, like **bob**. Then, **bob** should also have the SELECT permission on viewed indices, and the MODIFY permission on the "_kibana" keyspace to save kibana objects (search, visualization or dashboards).
+
+If you need to update elasticsearch privileges, don't forget to clear the privilege cache :
+
+    kubectl exec -ti elassandra-0 -- curl --user monitor:$ELASSANDRA_MONITOR_PASSWORD https://elassandra-0.elassandra.default.svc.cluster.local:9200/_aaa_clear_privilege_cache?pretty
+
+## Destroy your cluster
 
 	kubectl delete statefulset -l app=elassandra
 	Wait for statefulset termination...
