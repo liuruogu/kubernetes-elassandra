@@ -30,10 +30,10 @@ Create a Kubernetes cluster:
 
     az aks create --name $CLUSTER_NAME \
                   --resource-group $RESOURCE_GROUP_NAME \
-                  --ssh-key-value .ssh/id_rsa.pub \
+                  --ssh-key-value ~/.ssh/id_rsa.pub \
                   --node-count 3 \
                   --node-vm-size Standard_D2s_v3 \
-                  --kubernetes-version 1.9.6 \
+                  --kubernetes-version 1.11.3 \
                   --output table
 
 Register k8s credential and use it as default
